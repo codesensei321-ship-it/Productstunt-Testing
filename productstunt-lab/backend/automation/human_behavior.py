@@ -204,8 +204,12 @@ def human_move_and_click(page, locator):
     """
     Moves pointer with curved Bézier trajectory to locator bounding box, dwells, and clicks.
     """
-    box = locator.bounding_box()
-    if box:
+    try:
+        box = locator.bounding_box(timeout=3000)
+    except Exception:
+        box = None
+
+    if box and box.get('width', 0) > 0 and box.get('height', 0) > 0:
         target_x = box['x'] + box['width'] * random.uniform(0.25, 0.75)
         target_y = box['y'] + box['height'] * random.uniform(0.3, 0.7)
         human_mouse_jitter(page, random.randint(100, 800), random.randint(100, 600), target_x, target_y)
@@ -213,4 +217,5 @@ def human_move_and_click(page, locator):
         page.mouse.click(target_x, target_y)
     else:
         locator.click()
+
 

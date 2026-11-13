@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import React, { useState } from 'react';
 import '../styles/globals.css';
-import { Shield, Power, Terminal, AlertTriangle, X } from 'lucide-react';
+import { Shield, Power, AlertTriangle, X } from 'lucide-react';
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -16,7 +16,7 @@ export default function App({ Component, pageProps }: AppProps) {
       const res = await fetch('/api/system/kill_switch/', { method: 'POST' });
       const data = await res.json();
       setShowKillModal(false);
-      setKillNotice(`Engaged! Terminated Celery tasks. ${data.reset_bots || 0} bots reset to IDLE.`);
+      setKillNotice(`Stopped queued tasks. ${data.reset_bots || 0} bots reset to IDLE.`);
       setTimeout(() => setKillNotice(null), 4000);
     } catch {
       setKillNotice('Emergency Kill Switch triggered.');
@@ -27,12 +27,11 @@ export default function App({ Component, pageProps }: AppProps) {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans">
       <Head>
-        <title>Productstunt Bot Testing Lab</title>
+        <title>Productstunt Testing Lab</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 flex items-center justify-between gap-8 px-6 py-3 bg-neutral-900 border-b border-neutral-800">
+      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4 px-6 py-3 bg-neutral-900 border-b border-neutral-800">
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
             <Shield className="w-4 h-4" />
@@ -41,7 +40,7 @@ export default function App({ Component, pageProps }: AppProps) {
             Productstunt Lab
           </Link>
           <span className="text-xs text-neutral-500 font-mono hidden lg:inline">
-            Contabo VPS 6 · 100 Static ISP
+            Playwright Stealth · Docker Cluster
           </span>
         </div>
 
@@ -56,12 +55,11 @@ export default function App({ Component, pageProps }: AppProps) {
           </Link>
           <Link
             href="/accounts"
-            className={`py-1 border-b-2 flex items-center gap-1.5 ${
+            className={`py-1 border-b-2 ${
               router.pathname === '/accounts' ? 'text-white border-indigo-500 font-semibold' : 'text-neutral-400 border-transparent hover:text-white'
             }`}
           >
-            <span>Bots & Profiles</span>
-            <span className="text-xs font-mono text-neutral-500">100</span>
+            Accounts &amp; Proxies
           </Link>
           <Link
             href="/history"
@@ -84,12 +82,10 @@ export default function App({ Component, pageProps }: AppProps) {
         </div>
       </header>
 
-      {/* Main View */}
       <main className="flex-1 px-4 sm:px-6 py-6 max-w-7xl w-full mx-auto">
         <Component {...pageProps} />
       </main>
 
-      {/* Kill Switch Modal */}
       {showKillModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-neutral-900 border border-rose-500/40 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
@@ -105,11 +101,11 @@ export default function App({ Component, pageProps }: AppProps) {
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Engage Emergency Kill Switch?</h3>
-                <p className="text-xs text-rose-300 font-mono">Redis Queue Purge & Chromium Abort</p>
+                <p className="text-xs text-rose-300 font-mono">Purge Celery Tasks &amp; Stop Browsers</p>
               </div>
             </div>
             <p className="text-xs text-neutral-300">
-              Immediately flushes queued Celery tasks in Redis and resets all 100 bots to IDLE.
+              Immediately revokes running Playwright workers, closes active noVNC browsers, and resets all bots to IDLE.
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
@@ -137,9 +133,9 @@ export default function App({ Component, pageProps }: AppProps) {
         </div>
       )}
 
-      <footer className="border-t border-neutral-900 py-3.5 px-6 text-xs text-neutral-500 flex justify-between max-w-7xl mx-auto w-full">
-        <div>Productstunt Bot Testing Lab · Contabo VPS 6 (6 vCPU, 12 GB RAM)</div>
-        <div>100 Webshare Static ISP Proxies · Isolated Profile Volumes</div>
+      <footer className="border-t border-neutral-900 py-3.5 px-6 text-xs text-neutral-500 flex flex-wrap justify-between gap-2 max-w-7xl mx-auto w-full">
+        <div>Productstunt Testing Lab · Stealth Playwright + Persistent Profiles</div>
+        <div>Free &amp; Static Residential Proxy Ready</div>
       </footer>
     </div>
   );

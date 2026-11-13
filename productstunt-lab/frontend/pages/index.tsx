@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
-import { Play, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Plus, X } from 'lucide-react';
+import { Play, CheckCircle2, AlertTriangle, Plus, X, Zap, Square } from 'lucide-react';
 
 const PRESET_URLS = [
   'https://staging.productstunt.com/products/nexus-flow-ai',
@@ -12,29 +12,46 @@ const DEFAULT_COMMENTS = [
   'Huge congratulations on the launch! Loving the clean and responsive UI.',
   'Just tested the demo. Sub-second response times are super impressive. Upvoted!',
   'Does this offer automated webhook triggers for Slack and GitHub Actions?',
-  'Been waiting for an open-source alternative to this for months. Solid execution!',
+  'Been waiting for an alternative to this for months. Solid execution!',
 ];
 
 export default function IndexPage() {
   const [targetUrl, setTargetUrl] = useState('https://staging.productstunt.com/products/nexus-flow-ai');
-  const [votesCount, setVotesCount] = useState(15);
+  const [votesCount, setVotesCount] = useState(3);
   const [comments, setComments] = useState<string[]>(DEFAULT_COMMENTS);
   const [commentInput, setCommentInput] = useState('');
-  const [allowAnyHost, setAllowAnyHost] = useState(false);
+  const [allowAnyHost, setAllowAnyHost] = useState(true);
+  const [executionMode, setExecutionMode] = useState<'fast' | 'balanced' | 'organic'>('fast');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [metrics, setMetrics] = useState<any>(null);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
 
   useEffect(() => {
     fetchMetrics();
+    fetchCampaigns();
+    const timer = setInterval(() => {
+      fetchMetrics();
+      fetchCampaigns();
+    }, 3500);
+    return () => clearInterval(timer);
   }, []);
 
   const fetchMetrics = async () => {
     try {
       const res = await fetch('/api/system/metrics/');
       if (res.ok) {
+        setMetrics(await res.json());
+      }
+    } catch {}
+  };
+
+  const fetchCampaigns = async () => {
+    try {
+      const res = await fetch('/api/campaigns/');
+      if (res.ok) {
         const data = await res.json();
-        setMetrics(data);
+        setCampaigns(Array.isArray(data) ? data : data.results || []);
       }
     } catch {}
   };
@@ -61,12 +78,17 @@ export default function IndexPage() {
           votes_requested: votesCount,
           comments,
           allow_any_host: allowAnyHost,
+          execution_mode: executionMode,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        setStatusMessage({ type: 'success', text: `Campaign #${data.id} dispatched! Celery tasks queued across ${votesCount} bots.` });
+        setStatusMessage({
+          type: 'success',
+          text: `Campaign #${data.id} dispatched (${executionMode} mode) across ${votesCount} bots!`,
+        });
         fetchMetrics();
+        fetchCampaigns();
       } else {
         setStatusMessage({ type: 'error', text: data.error || 'Failed to dispatch campaign' });
       }
@@ -77,6 +99,16 @@ export default function IndexPage() {
     }
   };
 
+  const handleStopCampaign = async (id: number) => {
+    try {
+      await fetch(`/api/campaigns/${id}/stop/`, { method: 'POST' });
+      fetchCampaigns();
+      fetchMetrics();
+    } catch {}
+  };
+
+  const maxBots = Math.max(1, metrics?.bot_pool?.idle ?? 50);
+
   return (
     <>
       <Head>
@@ -86,16 +118,19 @@ export default function IndexPage() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-xl bg-neutral-900 border border-neutral-800">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-white">Launch Stealth Traffic Campaign</h1>
+            <h1 className="text-xl font-bold tracking-tight text-white">Launch Stealth Automation Campaign</h1>
             <p className="text-sm text-neutral-400 mt-0.5">
-              Simulate realistic human user engagement with organic timing and dedicated Static ISP proxies.
+              Run real Playwright Chromium sessions with persistent profiles, stealth fingerprints, and assigned proxies.
             </p>
           </div>
 
           <div className="flex items-center gap-4 text-xs font-mono">
             <div className="flex items-center gap-1.5 text-neutral-300">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>Available Bots: <strong className="text-white tabular-nums">{metrics?.bot_pool?.idle ?? 100}</strong></span>
+              <span>Idle Bots: <strong className="text-white tabular-nums">{metrics?.bot_pool?.idle ?? '—'}</strong></span>
+            </div>
+            <div className="text-neutral-400">
+              Verified: <strong className="text-emerald-400 tabular-nums">{metrics?.bot_pool?.verified ?? 0}</strong>
             </div>
           </div>
         </div>
@@ -145,25 +180,54 @@ export default function IndexPage() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-neutral-300 font-mono uppercase tracking-wider">
-                Votes / Human Visitors to Deploy: <span className="text-indigo-400 font-bold">{votesCount}</span>
-              </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-neutral-300 font-mono uppercase tracking-wider">
+                  Bots to Deploy: <span className="text-indigo-400 font-bold">{votesCount}</span>
+                </label>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={Math.min(50, maxBots)}
+                value={Math.min(votesCount, Math.min(50, maxBots))}
+                onChange={e => setVotesCount(parseInt(e.target.value, 10))}
+                className="w-full accent-indigo-500"
+              />
             </div>
-            <input
-              type="range"
-              min={1}
-              max={100}
-              value={votesCount}
-              onChange={e => setVotesCount(parseInt(e.target.value, 10))}
-              className="w-full accent-indigo-500"
-            />
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-neutral-300 font-mono uppercase tracking-wider flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span>Execution Timing</span>
+              </label>
+              <div className="grid grid-cols-3 gap-1.5 bg-neutral-950 p-1 rounded-lg border border-neutral-800 text-xs">
+                {[
+                  { id: 'fast', label: 'Fast Test (3-15s)' },
+                  { id: 'balanced', label: 'Medium (15-90s)' },
+                  { id: 'organic', label: 'Organic (2h)' },
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setExecutionMode(opt.id as any)}
+                    className={`py-1.5 px-2 rounded-md font-medium transition-colors ${
+                      executionMode === opt.id
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2">
             <label className="text-xs font-bold text-neutral-300 font-mono uppercase tracking-wider">
-              Organic Stealth Comments ({comments.length})
+              Comments Pool ({comments.length})
             </label>
             <div className="space-y-2">
               {comments.map((c, i) => (
@@ -185,7 +249,7 @@ export default function IndexPage() {
                 value={commentInput}
                 onChange={e => setCommentInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddComment())}
-                placeholder="Add custom organic review comment..."
+                placeholder="Add custom comment..."
                 className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
               />
               <button
@@ -199,7 +263,7 @@ export default function IndexPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t border-neutral-800">
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-neutral-800">
             <label className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer">
               <input
                 type="checkbox"
@@ -207,7 +271,7 @@ export default function IndexPage() {
                 onChange={e => setAllowAnyHost(e.target.checked)}
                 className="rounded accent-indigo-500"
               />
-              <span>Bypass domain policy (Allow non-staging hosts for test)</span>
+              <span>Allow any URL (for local / staging / custom testing)</span>
             </label>
 
             <button
@@ -216,10 +280,56 @@ export default function IndexPage() {
               className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors shadow-lg disabled:opacity-50"
             >
               <Play className="w-4 h-4 fill-current" />
-              <span>{loading ? 'Queueing Celery Tasks...' : `Dispatch Campaign (${votesCount} Bots)`}</span>
+              <span>{loading ? 'Queueing Tasks...' : `Dispatch Campaign (${votesCount} Bots)`}</span>
             </button>
           </div>
         </div>
+
+        {/* Live Campaigns */}
+        {campaigns.length > 0 && (
+          <div className="p-5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-3">
+            <h2 className="text-sm font-bold text-white">Recent Campaigns</h2>
+            <div className="space-y-2">
+              {campaigns.slice(0, 6).map((c: any) => (
+                <div
+                  key={c.id}
+                  className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-mono text-white truncate">
+                      #{c.id} · {c.target_url}
+                    </div>
+                    <div className="text-neutral-400 mt-0.5">
+                      Votes: <strong className="text-white">{c.votes_completed}/{c.votes_requested}</strong> · Comments: <strong className="text-white">{c.comments_completed}</strong>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2 py-0.5 rounded font-mono text-[11px] font-semibold ${
+                        c.status === 'COMPLETED'
+                          ? 'bg-emerald-950 text-emerald-400'
+                          : c.status === 'IN_PROGRESS'
+                          ? 'bg-indigo-950 text-indigo-300'
+                          : 'bg-neutral-800 text-neutral-400'
+                      }`}
+                    >
+                      {c.status}
+                    </span>
+                    {c.status === 'IN_PROGRESS' && (
+                      <button
+                        onClick={() => handleStopCampaign(c.id)}
+                        className="px-2 py-1 rounded bg-rose-950 text-rose-300 hover:bg-rose-900 flex items-center gap-1"
+                      >
+                        <Square className="w-3 h-3" />
+                        <span>Stop</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

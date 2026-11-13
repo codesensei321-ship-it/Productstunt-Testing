@@ -1,15 +1,13 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
     container_name: productstunt_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: staging_password
-      POSTGRES_DB: productstunt
-    command: -c shared_buffers=64MB -c max_connections=25 -c work_mem=4MB
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-staging_password}
+      POSTGRES_DB: ${POSTGRES_DB:-productstunt}
+    command: -c shared_buffers=64MB -c max_connections=50 -c work_mem=4MB
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +22,7 @@ services:
     image: redis:7-alpine
     container_name: productstunt_redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 64mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
     volumes:
       - ./data/redis:/data
     networks:
@@ -36,17 +34,29 @@ services:
       dockerfile: Dockerfile
     container_name: productstunt_backend
     restart: unless-stopped
+    shm_size: '512mb'
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py seed_bots --if-empty &&
-             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 1 --threads 3 --timeout 120 --access-logfile - --error-logfile -"
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 1 --threads 4 --timeout 120 --access-logfile - --error-logfile -"
     volumes:
       - ./backend:/app
       - ./data/profiles:/data/profiles
-    env_file:
-      - .env
+      - ./data:/data/import
+    environment:
+      DEBUG: ${DEBUG:-True}
+      SECRET_KEY: ${SECRET_KEY:-local-dev-secret-key-change-in-production-1234567890}
+      DATABASE_URL: ${DATABASE_URL:-postgres://admin:staging_password@db:5432/productstunt}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      TARGET_URL: ${TARGET_URL:-https://staging.productstunt.com}
+      ALLOW_ANY_HOST: ${ALLOW_ANY_HOST:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend,frontend}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      NEXT_PUBLIC_NOVNC_HOST: ${NEXT_PUBLIC_NOVNC_HOST:-localhost}
+      PAGE_GOTO_TIMEOUT_MS: ${PAGE_GOTO_TIMEOUT_MS:-60000}
     ports:
       - "8000:8000"
+      - "6080-6135:6080-6135"
     depends_on:
       db:
         condition: service_healthy
@@ -66,8 +76,14 @@ services:
     volumes:
       - ./backend:/app
       - ./data/profiles:/data/profiles
-    env_file:
-      - .env
+    environment:
+      DEBUG: ${DEBUG:-True}
+      SECRET_KEY: ${SECRET_KEY:-local-dev-secret-key-change-in-production-1234567890}
+      DATABASE_URL: ${DATABASE_URL:-postgres://admin:staging_password@db:5432/productstunt}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      TARGET_URL: ${TARGET_URL:-https://staging.productstunt.com}
+      ALLOW_ANY_HOST: ${ALLOW_ANY_HOST:-True}
+      PAGE_GOTO_TIMEOUT_MS: ${PAGE_GOTO_TIMEOUT_MS:-60000}
     depends_on:
       db:
         condition: service_healthy
@@ -85,8 +101,11 @@ services:
     command: celery -A config beat --loglevel=info
     volumes:
       - ./backend:/app
-    env_file:
-      - .env
+    environment:
+      DEBUG: ${DEBUG:-True}
+      SECRET_KEY: ${SECRET_KEY:-local-dev-secret-key-change-in-production-1234567890}
+      DATABASE_URL: ${DATABASE_URL:-postgres://admin:staging_password@db:5432/productstunt}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
       redis:
         condition: service_started
@@ -102,8 +121,11 @@ services:
     command: npm run start
     ports:
       - "3000:3000"
-    env_file:
-      - .env
+    environment:
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000/api}
+      INTERNAL_BACKEND_URL: ${INTERNAL_BACKEND_URL:-http://backend:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+      NEXT_PUBLIC_NOVNC_HOST: ${NEXT_PUBLIC_NOVNC_HOST:-localhost}
     depends_on:
       - backend
     networks:

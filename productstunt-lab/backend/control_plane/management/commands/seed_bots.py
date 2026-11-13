@@ -1,10 +1,9 @@
 import os
-import csv
-import random
+import re
+from urllib.parse import urlparse
 from django.core.management.base import BaseCommand
 from control_plane.models import Proxy, Bot, Account
 
-# 20 Realistic Webshare Static ISP proxy pools with US, UK, DE, and CA nodes
 DEFAULT_GEOS = [
     ('US', 'New York'), ('US', 'Los Angeles'), ('US', 'Chicago'),
     ('US', 'Ashburn'), ('US', 'Dallas'), ('GB', 'London'),
@@ -20,24 +19,88 @@ WIFI_SSIDS = [
     'Att-Fiber-Private', 'Verizon-Home-5G', 'TP-Link-Deco-Mesh', 'Frontier-Ultra-LAN'
 ]
 
-# Organic distribution of 50 accounts across 20 Wi-Fi IPs:
-# 4 single-occupant (1 bot), 6 couples (2 bots), 6 small families (3 bots), 4 large households (4 bots)
-# 4*1 + 6*2 + 6*3 + 4*4 = 4 + 12 + 18 + 16 = 50 bots
-WIFI_DEVICE_DISTRIBUTION = [
-    3, 2, 1, 4, 2, 3, 1, 2, 4, 3,
-    2, 1, 3, 4, 2, 3, 1, 2, 4, 3
-]
-
 MAIL_PROVIDERS = ['Gmail', 'Outlook']
 
+
+def parse_proxy_lines(raw_text):
+    """
+    Flexibly parses proxy entries in any common format:
+    - ip,port,username,password[,geo]
+    - ip,port
+    - ip:port:username:password
+    - ip:port
+    - http(s)://username:password@ip:port
+    - socks5://username:password@ip:port
+    """
+    parsed = []
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#') or line.lower().startswith('ip,') or line.lower().startswith('ip:'):
+            continue
+
+        scheme = 'http'
+        username = ''
+        password = ''
+        geo = 'US'
+        city = 'Imported'
+
+        if '://' in line:
+            u = urlparse(line)
+            if u.scheme in ('http', 'https', 'socks5'):
+                scheme = u.scheme
+            ip = u.hostname or ''
+            port = u.port or 80
+            username = u.username or ''
+            password = u.password or ''
+        elif ',' in line:
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) < 2:
+                continue
+            ip = parts[0]
+            port = int(parts[1]) if parts[1].isdigit() else 80
+            username = parts[2] if len(parts) > 2 else ''
+            password = parts[3] if len(parts) > 3 else ''
+            geo = parts[4] if len(parts) > 4 and parts[4] else 'US'
+        elif ':' in line:
+            parts = [p.strip() for p in line.split(':')]
+            if len(parts) < 2:
+                continue
+            ip = parts[0]
+            port = int(parts[1]) if parts[1].isdigit() else 80
+            username = parts[2] if len(parts) > 2 else ''
+            password = parts[3] if len(parts) > 3 else ''
+        else:
+            continue
+
+        if not ip or not re.match(r'^[\d\.]+$', ip):
+            continue
+
+        parsed.append({
+            'scheme': scheme,
+            'ip': ip,
+            'port': port,
+            'username': username,
+            'password': password,
+            'geo': geo[:50],
+            'city': city,
+        })
+    return parsed
+
+
 class Command(BaseCommand):
-    help = 'Seeds 20 Webshare Static ISP proxies mapped as Residential Wi-Fi Networks with 50 organically distributed bots'
+    help = 'Seeds proxies (from CSV/file or default placeholders) and creates 50 isolated bot profiles distributed across them'
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--csv',
             type=str,
-            help='Path to Webshare proxy CSV file (format: ip,port,username,password,geo)'
+            help='Path to proxy list file (CSV or ip:port:user:pass lines)'
+        )
+        parser.add_argument(
+            '--bots',
+            type=int,
+            default=50,
+            help='Number of bot profiles to seed (default: 50)'
         )
         parser.add_argument(
             '--if-empty',
@@ -51,105 +114,89 @@ class Command(BaseCommand):
             return
 
         csv_path = options.get('csv')
+        bot_count = max(1, min(100, options.get('bots', 50)))
         proxies_data = []
 
         if csv_path and os.path.exists(csv_path):
-            self.stdout.write(f"Loading proxies from CSV: {csv_path}")
+            self.stdout.write(f"Loading proxies from file: {csv_path}")
             with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if len(row) >= 4:
-                        proxies_data.append({
-                            'ip': row[0].strip(),
-                            'port': int(row[1].strip()),
-                            'username': row[2].strip(),
-                            'password': row[3].strip(),
-                            'geo': row[4].strip() if len(row) > 4 else 'US',
-                            'city': 'Imported',
-                        })
+                proxies_data = parse_proxy_lines(f.read())
         else:
-            self.stdout.write("Generating 20 Webshare Static ISP proxy blueprints (Residential Wi-Fi Hubs)...")
+            self.stdout.write("Generating 20 default placeholder proxy slots (replace with your free or residential proxies)...")
             base_ips = [
-                (198, 51, 100),
-                (203, 0, 113),
-                (192, 0, 2),
-                (104, 28, 14),
-                (172, 67, 180),
-                (142, 250, 72),
-                (173, 194, 21),
-                (74, 125, 133),
+                (198, 51, 100), (203, 0, 113), (192, 0, 2), (104, 28, 14),
+                (172, 67, 180), (142, 250, 72), (173, 194, 21), (74, 125, 133),
             ]
             for i in range(1, 21):
                 block = base_ips[(i - 1) % len(base_ips)]
                 geo, city = DEFAULT_GEOS[(i - 1) % len(DEFAULT_GEOS)]
                 proxies_data.append({
+                    'scheme': 'http',
                     'ip': f"{block[0]}.{block[1]}.{block[2]}.{(i * 7 + 15) % 240 + 1}",
                     'port': 8000 + (i % 20),
-                    'username': f"webshare_wifi_{i:02d}",
-                    'password': f"ws_key_{i:02d}_vps6",
+                    'username': f"proxy_user_{i:02d}",
+                    'password': f"proxy_pass_{i:02d}",
                     'geo': geo,
                     'city': city,
                     'wifi_ssid': WIFI_SSIDS[i - 1],
                 })
 
-        # Create/Update the 20 Proxy objects
-        created_proxies = []
-        for i, p_info in enumerate(proxies_data[:20], start=1):
-            is_degraded = (i == 8)
-            latency = 168 if is_degraded else (20 + (i * 3) % 45)
-            health = 'DEGRADED' if is_degraded else 'ONLINE'
+        if not proxies_data:
+            self.stderr.write(self.style.ERROR("No valid proxies found in input."))
+            return
 
+        created_proxies = []
+        for idx, p_info in enumerate(proxies_data, start=1):
             proxy, _ = Proxy.objects.update_or_create(
                 ip=p_info['ip'],
+                port=p_info['port'],
                 defaults={
-                    'port': p_info['port'],
-                    'username': p_info['username'],
-                    'password': p_info['password'],
+                    'scheme': p_info.get('scheme', 'http'),
+                    'proxy_type': 'FREE' if not csv_path else 'ISP',
+                    'username': p_info.get('username', ''),
+                    'password': p_info.get('password', ''),
                     'geo': p_info.get('geo', 'US'),
                     'city': p_info.get('city', 'New York'),
-                    'isp': f"Webshare Residential ISP ({p_info.get('wifi_ssid', 'Home-WiFi')})",
-                    'latency_ms': latency,
-                    'health_status': health,
-                    'packet_loss_percent': 3 if is_degraded else 0,
+                    'isp': p_info.get('wifi_ssid', f"Proxy Node #{idx:02d}"),
+                    'latency_ms': 40,
+                    'health_status': 'ONLINE',
+                    'packet_loss_percent': 0,
                     'is_active': True,
                 }
             )
             created_proxies.append(proxy)
 
-        # Distribute 50 bots across the 20 proxies according to WIFI_DEVICE_DISTRIBUTION
-        bot_id = 1
-        for hub_idx, device_count in enumerate(WIFI_DEVICE_DISTRIBUTION):
-            proxy = created_proxies[hub_idx]
-            for dev_num in range(device_count):
-                bot_name = f"bot_{bot_id:03d}"
-                profile_dir = f"/data/profiles/{bot_name}"
-                os.makedirs(profile_dir, exist_ok=True)
+        profiles_root = os.getenv('DATA_PROFILES_DIR', '/data/profiles')
+        for bot_id in range(1, bot_count + 1):
+            proxy = created_proxies[(bot_id - 1) % len(created_proxies)]
+            bot_name = f"bot_{bot_id:03d}"
+            profile_dir = os.path.join(profiles_root, bot_name)
+            os.makedirs(profile_dir, exist_ok=True)
 
-                is_primed = (bot_id <= 18)
+            bot, _ = Bot.objects.update_or_create(
+                name=bot_name,
+                defaults={
+                    'proxy': proxy,
+                    'profile_path': profile_dir,
+                    'status': 'IDLE',
+                }
+            )
 
-                bot, _ = Bot.objects.update_or_create(
-                    name=bot_name,
-                    defaults={
-                        'proxy': proxy,
-                        'profile_path': profile_dir,
-                        'status': 'IDLE',
-                        'cookies_count': 24 if is_primed else 2,
-                        'profile_size_mb': 14.5 if is_primed else 1.2,
-                    }
-                )
+            provider = MAIL_PROVIDERS[(bot_id - 1) % len(MAIL_PROVIDERS)]
+            Account.objects.get_or_create(
+                bot=bot,
+                defaults={
+                    'mailbox_provider': provider,
+                    'mailbox_email': '',
+                    'mailbox_password': '',
+                    'app_email': '',
+                    'app_password': '',
+                    'is_verified': False,
+                }
+            )
 
-                provider = MAIL_PROVIDERS[(bot_id - 1) % len(MAIL_PROVIDERS)]
-                Account.objects.update_or_create(
-                    bot=bot,
-                    defaults={
-                        'mailbox_provider': provider,
-                        'mailbox_email': f"user.{bot_name}@{'gmail.com' if provider == 'Gmail' else 'outlook.com'}",
-                        'mailbox_password': f"Pass_{bot_name}!2026",
-                        'app_email': f"user.{bot_name}@{'gmail.com' if provider == 'Gmail' else 'outlook.com'}" if is_primed else '',
-                        'app_password': f"Staging_{bot_name}#2026" if is_primed else '',
-                        'is_verified': is_primed,
-                    }
-                )
-                bot_id += 1
-
-        self.stdout.write(self.style.SUCCESS(f"Successfully seeded 20 Residential Wi-Fi Networks with 50 organically distributed bot devices!"))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Seeded {len(created_proxies)} proxies across {bot_count} isolated bot profiles!"
+            )
+        )
