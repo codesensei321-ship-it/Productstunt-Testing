@@ -1,0 +1,6 @@
+{
+  "name": "Productstunt Bot Testing Lab",
+  "description": "Secure single-VPS bot-testing lab and campaign orchestration dashboard with Webshare ISP proxies, NoVNC browser sessions, and Celery task queue control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
